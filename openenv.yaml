@@ -1,0 +1,247 @@
+# ─────────────────────────────────────────────────────────────
+# openenv.yaml — CRM Lead Scoring OpenEnv Specification v1.0.0
+# ─────────────────────────────────────────────────────────────
+
+name:        crm-lead-scoring-openenv
+version:     "1.0.0"
+description: >
+  An OpenEnv-compliant Reinforcement Learning environment simulating
+  real-world CRM lead management. An AI agent executes CRM actions
+  (call, email, meeting…) and receives shaped rewards based on lead
+  quality, intent, and conversion outcomes.
+
+author:  "CRM OpenEnv Team"
+license: MIT
+tags:
+  - reinforcement-learning
+  - crm
+  - sales
+  - lead-scoring
+  - openenv
+  - huggingface
+  - fastapi
+
+# ─────────────────────────────────────────────────────────────
+# OpenEnv Interface
+# ─────────────────────────────────────────────────────────────
+
+interface:
+  type: openenv
+  methods:
+    reset:  "POST /reset"
+    step:   "POST /step"
+    state:  "GET  /state/{session_id}"
+
+  api:
+    base_url:     "http://localhost:8000"
+    docs_url:     "http://localhost:8000/docs"
+    health_url:   "http://localhost:8000/health"
+    content_type: "application/json"
+
+# ─────────────────────────────────────────────────────────────
+# Observation Space
+# ─────────────────────────────────────────────────────────────
+
+observation_space:
+  type: dict
+  fields:
+    lead_id:
+      type:        string
+      description: "Unique lead identifier (LEAD-XXXXXXXX)"
+
+    score:
+      type:        float
+      range:       [0.0, 1.0]
+      description: "Dynamic lead quality score"
+
+    priority:
+      type:        categorical
+      values:      [low, medium, high, urgent]
+      description: "Lead priority derived from score"
+
+    stage:
+      type:        categorical
+      values:      [new, contacted, engaged, hot, converted, dropped]
+      description: "Current stage in the sales funnel"
+
+    interaction_count:
+      type:        integer
+      description: "Total number of step interactions"
+
+    history_summary:
+      type:        string
+      description: "Rolling summary of lead interactions"
+
+# ─────────────────────────────────────────────────────────────
+# Action Space
+# ─────────────────────────────────────────────────────────────
+
+action_space:
+  type: discrete
+  n:    6
+  actions:
+    - name:        call_lead
+      score_delta: +0.12
+      description: "Call the lead directly"
+
+    - name:        send_email
+      score_delta: +0.05
+      description: "Send a personalized follow-up email"
+
+    - name:        schedule_meeting
+      score_delta: +0.18
+      description: "Schedule a discovery or demo meeting"
+
+    - name:        ignore_lead
+      score_delta: -0.05
+      description: "Take no action (minor penalty)"
+
+    - name:        mark_as_hot
+      score_delta: +0.10
+      description: "Flag lead as high-priority hot lead"
+
+    - name:        mark_as_cold
+      score_delta: -0.30
+      description: "Downgrade and drop the lead"
+
+# ─────────────────────────────────────────────────────────────
+# Reward Function
+# ─────────────────────────────────────────────────────────────
+
+reward:
+  range:   [-1.0, +1.0]
+  cumulative_field: reward_score
+
+  components:
+    correct_action:
+      value:       +0.50
+      description: "Action matches stage-optimal policy"
+
+    great_action:
+      value:       +1.00
+      description: "Conversion achieved or hot lead correctly acted upon"
+
+    neutral_action:
+      value:       +0.10
+      description: "Valid but suboptimal action"
+
+    wrong_action:
+      value:       -0.50
+      description: "Counterproductive action for current stage"
+
+    ignore_active:
+      value:       -0.30
+      description: "Ignoring an engaged or hot lead"
+
+    scam_penalty:
+      value:       -1.00
+      description: "Scam/spam lead detected — disqualify immediately"
+
+    spam_repeat:
+      value:       -0.30
+      description: "Same action repeated more than 3 times"
+
+    conversion_bonus:
+      value:       +1.00
+      description: "Lead successfully converted"
+
+# ─────────────────────────────────────────────────────────────
+# Tasks
+# ─────────────────────────────────────────────────────────────
+
+tasks:
+  - id:          easy
+    name:        "Cold Lead Classification"
+    description: "Classify lead quality and initiate appropriate outreach"
+    initial_score_range: [0.05, 0.20]
+    extra_fields: []
+    max_steps:   10
+
+  - id:          medium
+    name:        "Lead Engagement + Scam Detection"
+    description: "Choose optimal actions while filtering fraudulent leads"
+    initial_score_range: [0.20, 0.40]
+    extra_fields: [scam_detected, scam_keywords, scam_reason]
+    max_steps:   15
+
+  - id:          hard
+    name:        "Full Lifecycle Conversion Optimization"
+    description: "Complete sales cycle with AI decision intelligence"
+    initial_score_range: [0.50, 0.70]
+    extra_fields:
+      - scam_detected
+      - scam_keywords
+      - scam_reason
+      - next_best_action
+      - action_reason
+      - recommended_schedule
+      - risk_flag
+    max_steps:   20
+
+# ─────────────────────────────────────────────────────────────
+# NLP Analysis
+# ─────────────────────────────────────────────────────────────
+
+nlp_analysis:
+  intent_levels: [Low, Medium, High]
+  outputs:
+    - input_summary
+    - task_complexity    # easy | medium | hard
+    - complexity_reason
+    - key_points         # list[str]
+    - intent             # Low | Medium | High
+    - entities           # email, phone, company, amount, date
+
+# ─────────────────────────────────────────────────────────────
+# Scam Detection
+# ─────────────────────────────────────────────────────────────
+
+scam_detection:
+  available_on: [medium, hard]
+  trigger_keywords:
+    primary:
+      - urgent
+      - free
+      - money
+      - lottery
+      - win
+      - prize
+      - congratulations
+      - wire transfer
+      - bitcoin
+      - inheritance
+  outputs:
+    - scam_detected   # bool
+    - scam_keywords   # list[str]
+    - scam_reason     # explanation string
+
+# ─────────────────────────────────────────────────────────────
+# Next Best Action (Hard only)
+# ─────────────────────────────────────────────────────────────
+
+next_best_action:
+  available_on: [hard]
+  intent_to_action:
+    Low:    send_email
+    Medium: call_lead
+    High:   schedule_meeting
+  outputs:
+    - next_best_action
+    - action_reason
+    - recommended_schedule
+    - risk_flag
+
+# ─────────────────────────────────────────────────────────────
+# Deployment
+# ─────────────────────────────────────────────────────────────
+
+deployment:
+  docker:
+    image:   crm-lead-scoring-openenv
+    port:    8000
+    command: "uvicorn api.server:app --host 0.0.0.0 --port 8000"
+
+  huggingface_spaces:
+    sdk:       docker
+    app_port:  8000
+    space_hardware: cpu-basic
